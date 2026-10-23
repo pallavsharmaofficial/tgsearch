@@ -1,0 +1,12 @@
+[project]
+name = "tgsearch"
+version = "0.1.0"
+description = "Search Telegram (your chats + global public posts) as your own account"
+requires-python = ">=3.10"
+dependencies = ["telethon>=1.40", "fastapi>=0.110", "uvicorn>=0.29"]
+
+[project.scripts]
+tgsearch = "tgsearch.cli:main"
+
+[tool.setuptools.package-data]
+tgsearch = ["index.html"]

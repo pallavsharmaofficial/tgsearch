@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TG Search</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#14171a;--mute:#6b7280;--line:#e5e7eb;--acc:#2481cc}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1216;--card:#171b21;--fg:#e8eaed;--mute:#9aa3ad;--line:#262c34;--acc:#5aaeea}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px}
+h1{font-size:20px;margin:0 0 14px}form{display:flex;gap:8px;flex-wrap:wrap}
+input,select,button{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
+input{flex:1;min-width:200px}button{background:var(--acc);color:#fff;border:0;cursor:pointer}
+#meta{color:var(--mute);font-size:13px;margin:12px 0}
+.h{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:8px 0}
+.t{font-weight:600}.s{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--acc);margin-right:6px}
+.m{color:var(--mute);font-size:13px}.x{margin-top:6px;white-space:pre-wrap;word-break:break-word}
+a{color:var(--acc)}
+</style></head><body><main>
+<h1>Telegram Search</h1>
+<form id="f"><input id="q" placeholder="Search Telegram…" autofocus>
+<select id="mode"><option value="all">Everything</option><option value="joined">My chats (incl. private)</option>
+<option value="public">Public posts (global)</option><option value="discover">Find channels/groups</option></select>
+<button>Search</button></form>
+<div id="meta"></div><div id="r"></div>
+</main><script>
+const tok=new URLSearchParams(location.search).get('token')||'';
+const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+fetch('/api/quota?token='+encodeURIComponent(tok)).then(r=>r.json()).then(q=>{
+  document.getElementById('meta').textContent=`Public search: ${q.free_remaining}/${q.total_daily} free queries left today`}).catch(()=>{});
+document.getElementById('f').onsubmit=async e=>{e.preventDefault();
+  const q=document.getElementById('q').value.trim();if(!q)return;
+  const r=document.getElementById('r'),m=document.getElementById('meta');m.textContent='Searching…';r.innerHTML='';
+  const res=await fetch(`/api/search?q=${encodeURIComponent(q)}&mode=${document.getElementById('mode').value}&token=${encodeURIComponent(tok)}`);
+  if(!res.ok){m.textContent='Error '+res.status;return}
+  const hits=await res.json();m.textContent=hits.length+' results';
+  r.innerHTML=hits.map(h=>`<div class="h"><span class="s">${h.source}</span><span class="t">${esc(h.chat)}</span>
+   <span class="m">${h.username?' @'+esc(h.username):''}${h.members?' · '+h.members+' members':''}${h.date?' · '+h.date.slice(0,10):''}</span>
+   ${h.text?`<div class="x">${esc(h.text)}</div>`:''}${h.link?`<div class="m"><a href="${esc(h.link)}" target="_blank" rel="noopener">${esc(h.link)}</a></div>`:''}</div>`).join('');
+};
+</script></body></html>
