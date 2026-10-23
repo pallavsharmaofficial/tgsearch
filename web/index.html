@@ -42,6 +42,11 @@ button.ghost{background:transparent;color:var(--mute);border:1px solid var(--lin
 .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}.row>*{min-width:0}
 .grow{flex:1 1 220px}
 .err{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;margin-top:12px;font-size:14px}
+.where{margin:0 0 10px!important;padding:10px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);color:var(--fg)!important;font-size:14px}
+button.alt{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.qrbox{display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-top:16px}
+.qrbox canvas{background:#fff;border-radius:12px;padding:8px;max-width:100%}
+.qrbox ol{margin:0;padding-left:20px;display:grid;gap:6px;min-width:0}
 .fine{font-size:13px;color:var(--mute);margin-top:14px}
 .fine a{color:var(--accent)}
 /* search */
@@ -78,7 +83,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 </head>
 <body>
 <div class="wrap">
-  <div class="brand"><h1>tg<b>search</b></h1><small>your chats + every public channel</small></div>
+  <div class="brand"><h1>tg<b>search</b></h1><small>public channels &amp; groups, worldwide</small></div>
 
   <!-- 1. one-time API credentials -->
   <section id="v-setup" class="panel" hidden>
@@ -98,21 +103,28 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   <!-- 2. login -->
   <section id="v-login" class="panel" hidden>
     <h2>Log in to Telegram</h2>
-    <p>tgsearch searches as you, so it needs your Telegram login. The session is saved in this browser and never leaves it.</p>
-    <button id="btn-login" type="button">Log in with phone number</button>
+    <p>Telegram only allows search from a logged-in account. Your session is saved in this browser and never leaves it.</p>
+    <div class="row"><button id="btn-qr" type="button">Log in with QR code</button><button id="btn-login" type="button" class="alt">Log in with phone number</button></div>
+    <div id="step-qr" hidden>
+      <div class="qrbox"><canvas id="qr" width="232" height="232" aria-label="Telegram login QR code"></canvas>
+        <ol><li>Open Telegram on your phone</li><li>Settings → Devices → <b>Link Desktop Device</b></li><li>Point the camera at this code</li></ol></div>
+      <p class="fine" id="qr-status">Generating code…</p>
+      <button type="button" id="btn-qr-cancel" class="ghost">Cancel</button>
+    </div>
     <form id="f-phone"><div id="step-phone" hidden>
       <label for="phone">Phone number</label>
-      <div class="row"><input id="phone" class="grow" type="tel" autocomplete="tel" placeholder="+91 98765 43210"><button>Send code</button></div>
+      <div class="row"><input id="phone" class="grow" type="tel" autocomplete="tel" placeholder="+91 98765 43210"><button type="submit">Send code</button></div>
     </div></form>
     <form id="f-code"><div id="step-code" hidden>
       <label for="code">Login code</label>
-      <p class="fine" style="margin:0 0 8px">Telegram sent it to your Telegram app (not SMS).</p>
-      <div class="row"><input id="code" class="grow mono" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="12345"><button>Verify</button></div>
+      <p class="where" id="code-where"></p>
+      <div class="row"><input id="code" class="grow mono" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="12345"><button type="submit">Verify</button></div>
+      <div class="row" style="margin-top:10px"><button type="button" id="btn-resend" class="ghost" hidden></button><button type="button" id="btn-change-phone" class="ghost">Change number</button></div>
     </div></form>
     <form id="f-pass"><div id="step-pass" hidden>
       <label for="pass">Two-step verification password</label>
       <p class="fine" id="pass-hint" style="margin:0 0 8px"></p>
-      <div class="row"><input id="pass" class="grow" type="password" autocomplete="current-password"><button>Log in</button></div>
+      <div class="row"><input id="pass" class="grow" type="password" autocomplete="current-password"><button type="submit">Log in</button></div>
     </div></form>
     <div class="err" id="login-err" hidden></div>
     <p class="fine">Revoke anytime in Telegram → Settings → Devices (shows as “tgsearch web”). <button id="btn-reset" type="button" class="ghost">Change API credentials</button></p>
@@ -123,20 +135,16 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
     <div class="bar"><div class="who"><span>Signed in as</span><b id="me"></b></div><button id="btn-logout" type="button" class="ghost">Log out</button></div>
     <form id="f-search">
       <div class="search"><input id="q" type="search" placeholder="Search Telegram…" autocomplete="off" maxlength="200" aria-label="Search query"><button>Search</button></div>
-      <div class="modes" role="radiogroup" aria-label="Where to search">
-        <label><input type="radio" name="mode" value="all" checked><span>Everything</span></label>
-        <label><input type="radio" name="mode" value="joined"><span>My chats (incl. private)</span></label>
-        <label><input type="radio" name="mode" value="public"><span>Public posts worldwide</span></label>
-        <label><input type="radio" name="mode" value="discover"><span>Find channels &amp; groups</span></label>
+      <div class="modes" role="radiogroup" aria-label="What to search">
+        <label><input type="radio" name="mode" value="all" checked><span>Everything public</span></label>
+        <label><input type="radio" name="mode" value="public"><span>Posts in public channels</span></label>
+        <label><input type="radio" name="mode" value="discover"><span>Channels &amp; groups</span></label>
       </div>
     </form>
-    <div class="sub">
-      <span id="quota">Checking global search quota…</span>
-      <span><label for="kind" style="display:inline;font-weight:500;margin:0 6px 0 0">My chats:</label><select id="kind"><option value="all">all</option><option value="groups">groups only</option><option value="channels">channels only</option></select></span>
-    </div>
+    <div class="sub"><span id="quota">Checking global search quota…</span></div>
     <div id="notes" hidden></div>
     <div class="meta" id="count" style="margin-bottom:10px"></div>
-    <div id="results"><div class="empty"><b>Search everything you can reach on Telegram.</b><span>Your own chats, private ones included, plus posts from public channels worldwide. Private groups you aren't in can't be searched by anyone.</span></div></div>
+    <div id="results"><div class="empty"><b>Search public Telegram, worldwide.</b><span>Finds public channels and groups by topic, posts across public channels, and messages inside matching public groups. Private groups can't be searched by anyone.</span></div></div>
   </section>
 </div>
 <script src="./app.js"></script>

@@ -2,6 +2,8 @@
 // Your session lives only in this browser's localStorage. Nothing is sent anywhere else.
 import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions";
+import { computeCheck } from "telegram/Password";
+import QRCode from "qrcode";
 
 const DEFAULT_API_ID = 37942741;
 const K = { id: "tgs.apiId", hash: "tgs.apiHash", sess: "tgs.session" };
@@ -78,45 +80,163 @@ $("f-setup").addEventListener("submit", (e) => {
   boot();
 });
 
-// ---------- login (phone → code → 2FA) ----------
-let pending = null; // resolver for the step the client is waiting on
-const ask = (step) => new Promise((resolve) => {
-  $("btn-login").hidden = true;
+// ---------- login (phone → code → 2FA), explicit so we can show where the code went ----------
+const L = { phone: "", hash: "", next: null };
+const stepTo = (step) => {
+  $("btn-login").hidden = true; $("btn-qr").hidden = true;
   for (const s of ["step-phone", "step-code", "step-pass"]) $(s).hidden = s !== step;
-  pending = resolve;
+  document.querySelectorAll("#v-login button").forEach((b) => (b.disabled = false));
   $(step).querySelector("input")?.focus();
-});
-for (const [form, input] of [["f-phone", "phone"], ["f-code", "code"], ["f-pass", "pass"]]) {
-  $(form).addEventListener("submit", (e) => {
-    e.preventDefault();
-    const v = $(input).value.trim();
-    if (!v || !pending) return;
-    $(form).querySelector("button").disabled = true;
-    const r = pending; pending = null; r(v);
-  });
+};
+const busy = (form, on, label) => {
+  const b = $(form).querySelector("button[type=submit],button:not([type])");
+  if (!b) return;
+  if (on) { b.dataset.label = b.textContent; b.textContent = label; b.disabled = true; }
+  else { b.textContent = b.dataset.label || b.textContent; b.disabled = false; }
+};
+
+function describeSent(type) {
+  const t = type?.className || "";
+  if (t.endsWith("SentCodeTypeApp")) return "Sent as a message from “Telegram” (the verified chat with the blue tick) inside your Telegram app, on a device where you're already logged in. It is not an SMS.";
+  if (t.endsWith("SentCodeTypeSms") || t.endsWith("SmsWord") || t.endsWith("SmsPhrase")) return "Sent by SMS to your phone.";
+  if (t.endsWith("SentCodeTypeFirebaseSms")) return "Sent by SMS to your phone (via Google).";
+  if (t.endsWith("SentCodeTypeCall")) return "Telegram will call you and read the code.";
+  if (t.endsWith("SentCodeTypeFlashCall") || t.endsWith("MissedCall")) return "Telegram will give you a missed call. The code is the last digits of the calling number.";
+  if (t.endsWith("SentCodeTypeEmailCode")) return `Sent to your login email${type.emailPattern ? ` (${type.emailPattern})` : ""}. Check spam too.`;
+  if (t.endsWith("SentCodeTypeFragmentSms")) return `Sent through Fragment for your anonymous number: ${type.url || "fragment.com"}`;
+  if (t.endsWith("SetUpEmailRequired")) return "Telegram requires a login email for this account first. Log in once in the official Telegram app, set a login email when asked, then try again.";
+  return `Code sent (${t || "unknown method"}).`;
 }
+function describeNext(nt) {
+  const t = nt?.className || "";
+  if (t.endsWith("CodeTypeSms")) return "Send by SMS instead";
+  if (t.endsWith("CodeTypeCall")) return "Call me instead";
+  if (t.endsWith("CodeTypeFlashCall") || t.endsWith("MissedCall")) return "Use a missed call instead";
+  if (t.endsWith("FragmentSms")) return "Send via Fragment instead";
+  return null;
+}
+function showSent(r) {
+  L.hash = r.phoneCodeHash || L.hash;
+  $("code-where").textContent = describeSent(r.type);
+  const label = describeNext(r.nextType);
+  $("btn-resend").hidden = !label;
+  if (label) $("btn-resend").textContent = r.timeout ? `${label} (in ${r.timeout}s)` : label;
+  $("btn-resend").disabled = !!r.timeout;
+  if (r.timeout) setTimeout(() => { $("btn-resend").disabled = false; $("btn-resend").textContent = label; }, r.timeout * 1000);
+  stepTo("step-code");
+}
+
 $("btn-login").addEventListener("click", async () => {
-  $("btn-login").disabled = true; $("btn-login").textContent = "Connecting to Telegram…";
   err($("login-err"), null);
+  $("btn-login").disabled = true; $("btn-login").textContent = "Connecting to Telegram…";
   try {
     client = client || makeClient();
-    await client.start({
-      phoneNumber: () => ask("step-phone"),
-      phoneCode: () => ask("step-code"),
-      password: (hint) => { $("pass-hint").textContent = hint ? `Hint: ${hint}` : ""; return ask("step-pass"); },
-      onError: (e) => {
-        err($("login-err"), e);
-        document.querySelectorAll("#v-login button").forEach((b) => (b.disabled = false));
-        return false; // let GramJS re-ask the same step
-      },
-    });
-    store.set(K.sess, client.session.save());
-    enterSearch();
+    await Promise.race([client.connect(), new Promise((_, r) => setTimeout(() => r(new Error("Couldn't reach Telegram. Check your connection or VPN.")), 20000))]);
+    stepTo("step-phone");
   } catch (e) {
     err($("login-err"), e);
-    $("btn-login").disabled = false; $("btn-login").textContent = "Log in with phone number";
-  }
+  } finally { $("btn-login").disabled = false; $("btn-login").textContent = "Log in with phone number"; }
 });
+
+$("f-phone").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const phone = $("phone").value.replace(/[\s()-]/g, "");
+  if (!/^\+?\d{7,15}$/.test(phone)) return err($("login-err"), "Enter the number with country code, e.g. +919876543210.");
+  err($("login-err"), null); busy("f-phone", true, "Sending…");
+  try {
+    L.phone = phone.startsWith("+") ? phone : "+" + phone;
+    const r = await client.invoke(new Api.auth.SendCode({
+      phoneNumber: L.phone, apiId: Number(store.get(K.id) || DEFAULT_API_ID), apiHash: store.get(K.hash),
+      settings: new Api.CodeSettings({}),
+    }));
+    if (r.className === "auth.SentCodeSuccess") return finishLogin();
+    showSent(r);
+  } catch (e2) { err($("login-err"), e2); }
+  finally { busy("f-phone", false); }
+});
+
+$("btn-resend").addEventListener("click", async () => {
+  err($("login-err"), null); $("btn-resend").disabled = true;
+  try { showSent(await client.invoke(new Api.auth.ResendCode({ phoneNumber: L.phone, phoneCodeHash: L.hash }))); }
+  catch (e) { err($("login-err"), e); $("btn-resend").disabled = false; }
+});
+$("btn-change-phone").addEventListener("click", () => { err($("login-err"), null); stepTo("step-phone"); });
+
+$("f-code").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const code = $("code").value.replace(/\D/g, "");
+  if (!code) return;
+  err($("login-err"), null); busy("f-code", true, "Verifying…");
+  try {
+    const r = await client.invoke(new Api.auth.SignIn({ phoneNumber: L.phone, phoneCodeHash: L.hash, phoneCode: code }));
+    if (r.className === "auth.AuthorizationSignUpRequired") throw new Error("This number has no Telegram account. Sign up in the official app first.");
+    return finishLogin();
+  } catch (e2) {
+    if ((e2.errorMessage || "").includes("SESSION_PASSWORD_NEEDED")) {
+      try { const pw = await client.invoke(new Api.account.GetPassword()); $("pass-hint").textContent = pw.hint ? `Hint: ${pw.hint}` : ""; } catch {}
+      return stepTo("step-pass");
+    }
+    err($("login-err"), e2);
+  } finally { busy("f-code", false); }
+});
+
+$("f-pass").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const password = $("pass").value;
+  if (!password) return;
+  if (qrPass) { busy("f-pass", true, "Checking…"); const r = qrPass; qrPass = null; return r(password); }
+  err($("login-err"), null); busy("f-pass", true, "Checking…");
+  try {
+    const pw = await client.invoke(new Api.account.GetPassword());
+    const check = await computeCheck(pw, password);
+    await client.invoke(new Api.auth.CheckPassword({ password: check }));
+    return finishLogin();
+  } catch (e2) { err($("login-err"), e2); }
+  finally { busy("f-pass", false); }
+});
+
+
+// ---------- QR login (scan from Telegram on your phone) ----------
+let qrPass = null; // resolver when QR login needs the 2FA password
+const b64url = (buf) => buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+$("btn-qr").addEventListener("click", async () => {
+  err($("login-err"), null);
+  $("btn-qr").disabled = true; $("btn-qr").textContent = "Connecting to Telegram…";
+  try {
+    client = client || makeClient();
+    await Promise.race([client.connect(), new Promise((_, r) => setTimeout(() => r(new Error("Couldn't reach Telegram. Check your connection or VPN.")), 20000))]);
+    $("btn-login").hidden = true; $("btn-qr").hidden = true;
+    for (const st of ["step-phone", "step-code", "step-pass"]) $(st).hidden = true;
+    $("step-qr").hidden = false;
+    await client.signInUserWithQrCode(
+      { apiId: Number(store.get(K.id) || DEFAULT_API_ID), apiHash: store.get(K.hash) },
+      {
+        qrCode: async ({ token }) => {
+          await QRCode.toCanvas($("qr"), `tg://login?token=${b64url(token)}`, { width: 232, margin: 1, color: { dark: "#10202e", light: "#ffffff" } });
+          $("qr-status").textContent = "Waiting for scan… (refreshes automatically)";
+        },
+        password: (hint) => new Promise((resolve) => {
+          $("step-qr").hidden = true;
+          $("pass-hint").textContent = hint ? `Hint: ${hint}` : "";
+          qrPass = resolve; stepTo("step-pass");
+        }),
+        onError: (e) => { err($("login-err"), e); document.querySelectorAll("#v-login button").forEach((b) => (b.disabled = false)); return false; },
+      },
+    );
+    qrPass = null;
+    finishLogin();
+  } catch (e) {
+    err($("login-err"), e);
+    $("step-qr").hidden = true; $("btn-login").hidden = false; $("btn-qr").hidden = false;
+  } finally { $("btn-qr").disabled = false; $("btn-qr").textContent = "Log in with QR code"; }
+});
+$("btn-qr-cancel").addEventListener("click", () => location.reload());
+
+function finishLogin() {
+  store.set(K.sess, client.session.save());
+  $("phone").value = $("code").value = $("pass").value = "";
+  enterSearch();
+}
 
 // ---------- search ----------
 async function enterSearch() {
@@ -232,23 +352,20 @@ async function searchDeep(q, chats, per = 10) {
   return out;
 }
 
-const SOURCES_ORDER = ["Your chats", "Public posts", "Inside public chats", "Channels & groups"];
+const SOURCES_ORDER = ["Channels & groups", "Public posts", "Inside public chats"];
 
-async function runSearch(q, mode, kind) {
+async function runSearch(q, mode) {
   const limit = 50, hits = [], notes = [];
   const tryRun = async (label, fn) => {
     try { hits.push(...(await fn())); } catch (e) { notes.push(`${label}: ${humanError(e)}`); }
   };
-  if (mode === "all" || mode === "joined") await tryRun("Your chats", () => searchJoined(q, limit, kind));
   if (mode === "all" || mode === "public") {
     if (mode === "public" || $("quota").dataset.left !== "0") await tryRun("Public posts", () => searchPublic(q, limit));
-    else notes.push("Public posts: no free global searches left today (Telegram charges Stars beyond the quota; tgsearch never pays).");
+    else notes.push("Posts in public channels: no free global searches left today (Telegram charges Stars beyond the quota; tgsearch never pays). Channels & groups search still works.");
   }
   let found = [];
-  if (mode === "all" || mode === "discover") {
-    try { found = await discover(q); hits.push(...found); } catch (e) { notes.push(`Channels & groups: ${humanError(e)}`); }
-  }
-  if (mode === "all") await tryRun("Inside public chats", () => searchDeep(q, found.filter((f) => f.username).slice(0, 5)));
+  try { found = await discover(q); if (mode !== "public") hits.push(...found); } catch (e) { notes.push(`Channels & groups: ${humanError(e)}`); }
+  if (mode === "all") await tryRun("Inside public chats", () => searchDeep(q, found.filter((f) => f.username).slice(0, 6)));
   const seen = new Set();
   return { hits: hits.filter((h) => (seen.has(h.key) ? false : seen.add(h.key))), notes };
 }
@@ -266,7 +383,7 @@ function render(q, { hits, notes }, ms) {
   $("notes").hidden = !notes.length;
   $("count").textContent = `${hits.length} result${hits.length === 1 ? "" : "s"} · ${(ms / 1000).toFixed(1)}s`;
   if (!hits.length) {
-    $("results").innerHTML = `<div class="empty"><b>Nothing found for “${esc(q)}”.</b><span>Try fewer words, another language, or the "Channels & groups" mode to find where people talk about it.</span></div>`;
+    $("results").innerHTML = `<div class="empty"><b>Nothing found for “${esc(q)}”.</b><span>Try fewer words or another language. Only public channels and groups are searched.</span></div>`;
     return;
   }
   const groups = new Map();
@@ -297,8 +414,8 @@ $("f-search").addEventListener("submit", async (e) => {
   $("count").textContent = ""; $("results").innerHTML = `<div class="loading">Searching Telegram for “${esc(q)}”…</div>`;
   const t0 = performance.now();
   try {
-    render(q, await runSearch(q, mode, $("kind").value), performance.now() - t0);
-    if (mode !== "joined" && mode !== "discover") refreshQuota();
+    render(q, await runSearch(q, mode), performance.now() - t0);
+    if (mode !== "discover") refreshQuota();
   } catch (e2) {
     $("results").innerHTML = `<div class="empty"><b>Search failed.</b><span>${esc(humanError(e2))}</span></div>`;
   } finally { btn.disabled = false; btn.textContent = "Search"; }
