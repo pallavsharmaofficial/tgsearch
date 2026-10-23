@@ -1,6 +1,21 @@
 # tgsearch
 
-Search Telegram as **your own account** — every chat you're in (private included) plus Telegram's global public-post search.
+Search Telegram as **your own account**: every chat you're in (private included) plus Telegram's global search across all public channels.
+
+**Live app:** https://pallavsharmaofficial.github.io/tgsearch/
+
+## Web app (GitHub Pages)
+
+The web app runs entirely in your browser. It connects straight to Telegram over WebSocket; there is no server.
+
+1. Open the live URL and paste your `api_id` and `api_hash` from [my.telegram.org/apps](https://my.telegram.org/apps). They are stored in this browser only, never in the repo.
+2. Log in with your phone number. Telegram sends a code to your Telegram app; enter your 2FA password if you have one.
+3. Search. Your session stays in this browser's localStorage. Log out from the page or revoke it in Telegram → Settings → Devices ("tgsearch web").
+
+It deploys on every push to `main` via `.github/workflows/deploy-pages.yml` (`npm ci && npm run build` → `dist/`).
+GramJS 2.26.22 predates Telegram's global post search, so `scripts/patch-gramjs.mjs` adds `channels.searchPosts(query)` and `channels.checkSearchPostsFlood`. Their serialization matches Telethon byte for byte.
+
+## Python CLI / server (optional)
 
 | Mode | Covers | Telegram API |
 |---|---|---|

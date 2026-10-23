@@ -1,0 +1,26 @@
+{
+  "name": "tgsearch-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "node scripts/patch-gramjs.mjs",
+    "build": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "telegram": "2.26.22"
+  },
+  "devDependencies": {
+    "assert": "^2.1.0",
+    "buffer": "6.0.3",
+    "constants-browserify": "^1.0.0",
+    "crypto-browserify": "^3.12.1",
+    "esbuild": "0.24.2",
+    "events": "^3.3.0",
+    "os-browserify": "^0.3.0",
+    "path-browserify": "^1.0.1",
+    "process": "0.11.10",
+    "stream-browserify": "^3.0.0",
+    "util": "^0.12.5",
+    "vm-browserify": "^1.1.2"
+  }
+}
