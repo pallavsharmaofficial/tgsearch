@@ -1,5 +1,7 @@
 import { build } from "esbuild";
-import { cpSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+rmSync("dist", { recursive: true, force: true });
 mkdirSync("dist", { recursive: true });
 await build({
   entryPoints: ["web/src/app.js"],
@@ -16,5 +18,8 @@ await build({
   },
   logLevel: "warning",
 });
-cpSync("web/index.html", "dist/index.html");
+// Content-hashed filename so a cached old script can never pair with a new page.
+const hash = createHash("sha256").update(readFileSync("dist/app.js")).digest("hex").slice(0, 10);
+renameSync("dist/app.js", `dist/app.${hash}.js`);
+writeFileSync("dist/index.html", readFileSync("web/index.html", "utf8").replace('src="./app.js"', `src="./app.${hash}.js"`));
 console.log("built dist/");
