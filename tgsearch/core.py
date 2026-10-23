@@ -37,9 +37,13 @@ class Hit:
 
 
 def make_client() -> TelegramClient:
+    """Server: set TG_SESSION_STRING (from `tgsearch export-session`). Local: file session."""
+    from telethon.sessions import StringSession
     api_id = int(os.environ["TG_API_ID"])
     api_hash = os.environ["TG_API_HASH"]
-    session = os.environ.get("TG_SESSION", os.path.expanduser("~/.tgsearch/me"))
+    if os.environ.get("TG_SESSION_STRING"):
+        return TelegramClient(StringSession(os.environ["TG_SESSION_STRING"]), api_id, api_hash)
+    session = os.path.expanduser(os.environ.get("TG_SESSION", "~/.tgsearch/me"))
     os.makedirs(os.path.dirname(session), exist_ok=True)
     return TelegramClient(session, api_id, api_hash)
 

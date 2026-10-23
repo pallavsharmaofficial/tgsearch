@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: tgsearch
+    runtime: docker
+    plan: starter        # needs an always-on instance; free tier sleeps and drops the Telegram connection
+    healthCheckPath: /healthz
+    envVars:
+      - key: TG_API_ID
+        sync: false
+      - key: TG_API_HASH
+        sync: false
+      - key: TG_SESSION_STRING
+        sync: false
+      - key: TGSEARCH_PASSWORD
+        sync: false

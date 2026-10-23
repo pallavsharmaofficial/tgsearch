@@ -7,7 +7,8 @@
   tgsearch discover "crypto india"
   tgsearch deep "query" @chan1 @chan2
   tgsearch quota
-  tgsearch serve --port 8787           # local web UI
+  tgsearch export-session             # prints session string for hosting
+  tgsearch serve --port 8787           # web UI
   add --json to any search for machine output
 """
 import argparse
@@ -46,6 +47,14 @@ async def main_async(a):
         me = await client.get_me()
         print(f"Logged in as {me.first_name} (@{me.username}). Session saved.")
         return
+    if a.cmd == "export-session":
+        from telethon.sessions import StringSession
+        await client.connect()
+        if not await client.is_user_authorized():
+            sys.exit("Not logged in. Run: tgsearch login")
+        print(StringSession.save(client.session))
+        print("\n^ Set this as TG_SESSION_STRING secret on your host. Treat it like a password.", file=sys.stderr)
+        await client.disconnect(); return
     await client.connect()
     if not await client.is_user_authorized():
         sys.exit("Not logged in. Run: tgsearch login")
@@ -70,8 +79,8 @@ async def main_async(a):
 def main():
     p = argparse.ArgumentParser(prog="tgsearch")
     s = p.add_subparsers(dest="cmd", required=True)
-    s.add_parser("login"); s.add_parser("quota")
-    sv = s.add_parser("serve"); sv.add_argument("--host", default="127.0.0.1"); sv.add_argument("--port", type=int, default=8787)
+    s.add_parser("login"); s.add_parser("quota"); s.add_parser("export-session")
+    sv = s.add_parser("serve"); sv.add_argument("--host", default="127.0.0.1"); sv.add_argument("--port", type=int, default=int(__import__("os").environ.get("PORT", 8787)))
     for name in ("all", "joined", "public", "discover", "deep"):
         sp = s.add_parser(name)
         sp.add_argument("q")

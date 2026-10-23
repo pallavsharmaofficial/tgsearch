@@ -22,14 +22,13 @@ a{color:var(--acc)}
 <button>Search</button></form>
 <div id="meta"></div><div id="r"></div>
 </main><script>
-const tok=new URLSearchParams(location.search).get('token')||'';
 const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-fetch('/api/quota?token='+encodeURIComponent(tok)).then(r=>r.json()).then(q=>{
+fetch('/api/quota').then(r=>r.json()).then(q=>{
   document.getElementById('meta').textContent=`Public search: ${q.free_remaining}/${q.total_daily} free queries left today`}).catch(()=>{});
 document.getElementById('f').onsubmit=async e=>{e.preventDefault();
   const q=document.getElementById('q').value.trim();if(!q)return;
   const r=document.getElementById('r'),m=document.getElementById('meta');m.textContent='Searching…';r.innerHTML='';
-  const res=await fetch(`/api/search?q=${encodeURIComponent(q)}&mode=${document.getElementById('mode').value}&token=${encodeURIComponent(tok)}`);
+  const res=await fetch(`/api/search?q=${encodeURIComponent(q)}&mode=${document.getElementById('mode').value}`);
   if(!res.ok){m.textContent='Error '+res.status;return}
   const hits=await res.json();m.textContent=hits.length+' results';
   r.innerHTML=hits.map(h=>`<div class="h"><span class="s">${h.source}</span><span class="t">${esc(h.chat)}</span>

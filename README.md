@@ -39,9 +39,21 @@ tgsearch all "x" --json > out.json
 tgsearch serve                      # web UI → http://127.0.0.1:8787
 ```
 
+## Deploy online
+
+The app needs an **always-on Python server**, not a static host, because it holds a live Telegram connection. GitHub Pages and Vercel static hosting won't work.
+
+1. Locally: `tgsearch login`, then `tgsearch export-session` → copy the string.
+2. Push this repo to GitHub, then create a web service from it (Render: `render.yaml` included; Railway/Fly: use the `Dockerfile`).
+3. Set the secrets `TG_API_ID`, `TG_API_HASH`, `TG_SESSION_STRING`, and `TGSEARCH_PASSWORD`. `TGSEARCH_USER` is optional and defaults to `vicky`.
+4. Open the URL. The browser will ask for a username and password.
+
+Run only **one** instance per session string. Two servers using the same session will make Telegram kill it.
+
 ## Security
 
 - The `.session` file **is** your Telegram login. Keep it off git (already in `.gitignore`), never put it on a shared host.
-- `serve` binds to localhost. To expose it, set `TGSEARCH_TOKEN` and open `/?token=…`; it refuses to bind publicly without one.
+- `TG_SESSION_STRING` = full access to your Telegram. Store it only as a host secret, never in git.
+- The server refuses to start publicly without `TGSEARCH_PASSWORD`. Use a long random one.
 - Revoke anytime: Telegram → Settings → Devices.
 - Go easy on `deep` across many chats — aggressive scraping triggers FloodWait and can get the account limited.
