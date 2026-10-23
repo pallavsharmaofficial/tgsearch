@@ -1,8 +1,0 @@
-Metadata-Version: 2.4
-Name: tgsearch
-Version: 0.1.0
-Summary: Search Telegram (your chats + global public posts) as your own account
-Requires-Python: >=3.10
-Requires-Dist: telethon>=1.40
-Requires-Dist: fastapi>=0.110
-Requires-Dist: uvicorn>=0.29

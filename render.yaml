@@ -3,6 +3,9 @@ services:
     name: tgsearch
     runtime: docker
     plan: starter        # needs an always-on instance; free tier sleeps and drops the Telegram connection
+    numInstances: 1      # one Telegram connection per session string; never scale out
+    branch: main
+    autoDeployTrigger: checksPass   # deploy main only after the CI workflow passes
     healthCheckPath: /healthz
     envVars:
       - key: TG_API_ID
@@ -13,3 +16,5 @@ services:
         sync: false
       - key: TGSEARCH_PASSWORD
         sync: false
+      - key: TGSEARCH_USER
+        value: vicky
